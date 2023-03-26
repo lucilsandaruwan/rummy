@@ -1,0 +1,18 @@
+.card {
+    margin-top: 50px;
+    /* color: red */
+}
+.red {
+    color: red
+}
+.small_pane {
+    height: 5px;
+}
+.hand {
+    /* height: 20px; */
+    font-size: 10px;
+}
+.start_button {
+    color: green !important;
+    border-color: green !important;
+}
