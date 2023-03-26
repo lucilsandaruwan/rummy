@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %} Home Page {% endblock %}
+
+
+
+{% block content %}
+<p>Hi {{ user.getName() }}</p>
+<p>
+    <div class="game-list-grid-container">
+        <div class="game-grid-item game-header">Player1</div>
+        <div class="game-grid-item game-header">Player2</div>
+        <div class="game-grid-item game-header">Winner</div>  
+        <div class="game-grid-item game-header">Action</div>
+        
+        {% for key, game in games.items() %}
+            <div class="game-grid-item game-header">{{ game.getPlayerName(0) }}</div>
+            <div class="game-grid-item game-header">{{ game.getPlayerName(1) }}</div>
+            <div class="game-grid-item game-header">{{ game.getWinnerName()}}</div>  
+            <div class="game-grid-item game-header">{% if game.requirePlayes() %}
+                <a href="/join-game/?game_id={{ game.getId() }}"> Join</a>
+            {% endif %}
+            </div>
+        {% endfor %}
+        {% if True %}
+            <div class="game-grid-item"><a href="/join-game"> Create a game</a></div>
+        {% endif %}
+    </div>
+</p>
+{% endblock %}
+

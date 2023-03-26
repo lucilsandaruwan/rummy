@@ -1,0 +1,113 @@
+<html>
+<head>
+<style>
+.card-hand {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.card {
+  position: relative;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+  width: 120px;
+  height: 180px;
+  margin: 10px;
+  transition: all 0.3s ease-in-out;
+}
+
+.card:hover {
+  transform: translateY(-10px);
+  box-shadow: 4px 4px 10px rgba(0,0,0,0.5);
+}
+
+.card-top,
+.card-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  font-family: "Beleren";
+}
+
+.card-middle {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+
+.rank {
+  font-size: 32px;
+}
+
+.suit {
+  font-size: 32px;
+  margin-left: 5px;
+}
+
+.hearts {
+  color: red;
+}
+
+.diamonds {
+  color: red
+
+</style>
+<script type="text/javascript">
+    const toggleBtn = document.getElementById("toggle");
+    const cardHand = document.querySelector(".card-hand");
+    alert("test");
+    toggleBtn.addEventListener("click", () => {
+      cardHand.classList.toggle("collapsed");
+    });
+</script>
+    
+</head>
+<body>
+    <button id="toggle">Toggle Card Hand</button>
+
+<ul class="card-hand">
+  <li class="card">
+    <div class="card-top">
+      <div class="rank">A</div>
+      <div class="suit hearts">&#x2665;</div>
+    </div>
+    <div class="card-middle">
+      <div class="suit hearts">&#x2665;</div>
+    </div>
+    <div class="card-bottom">
+      <div class="rank">A</div>
+      <div class="suit hearts">&#x2665;</div>
+    </div>
+  </li>
+  <li class="card">
+    <div class="card-top">
+      <div class="rank">5</div>
+      <div class="suit diamonds">&#x2666;</div>
+    </div>
+    <div class="card-middle">
+      <div class="suit diamonds">&#x2666;</div>
+    </div>
+    <div class="card-bottom">
+      <div class="rank">2</div>
+      <div class="suit diamonds">&#x2666;</div>
+    </div>
+  </li>
+  <!-- More cards here... -->
+</ul>
+
+
+
+
+</body>
+</html>
