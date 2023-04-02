@@ -20,7 +20,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 app.secret_key = "rummy_test_app"
 app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_FILE_DIR'] = '/tmp'
+app.config['SESSION_FILE_DIR'] = './tmp'
 
 
 
@@ -49,9 +49,9 @@ def login():
 @app.route('/load_game/')
 def loadgame():
     def c():
-        game = getGameJson()
-        ret = {'status': 'success', 'data': game} if game else {}
-        return jsonify(ret) 
+        playerId = getLoggedPlayerId()
+        game = getGame()
+        return jsonify({'status': 'success', 'data': game.getJson(playerId) if game else {}}) 
     return authontication(c)
 
 @app.route('/logout/')
@@ -74,15 +74,16 @@ def create_game():
         'finish_mark': {'required': True}
         ,'players': {'requireed': True, 'type': 'list'}
     }
-    def c(postData):
-        postData['creator'] = getSesAsObj('player').getId()
+    def c(postData, params):
+        playerId = getSesAsObj('player').getId()
+        postData['creator'] = playerId
         game = GameModel().create(postData)
         # print(game.roomId, 'game rooom id')
         if (game):
             game.sendInvitations(socketio.emit)
-            return jsonify({'status': 'success', "data": postData}) 
+            return jsonify({'status': 'success', "data": game.getJson(playerId)}) 
         else:
-            return jsonify({'status': 'success', "data": postData}) 
+            return jsonify({'status': 'failed', "data": 'Unknown error, please try agin'}) 
     return handlePost(postRules, None, authontication(lambda: c )) 
 
 @app.route('/fetch_hands')
@@ -110,15 +111,89 @@ def decline_hand():
     }
     return handlePost(postRules,'declined', authontication(lambda: updateHands )) 
 
-@cross_origin(supports_credentials=True)
-@app.route('/start_game')
-def startGameHandler(): 
-    return authontication(startGame())
 
+@app.route('/start_game', methods = ['GET', 'POST'])
+@cross_origin(supports_credentials=True)
+def startGameHandler():
+    return authontication(startGame)
+
+@app.route('/draw', methods = ['GET', 'POST'])
+@cross_origin(supports_credentials=True)
+def drawHandler():
+    postRules = {
+        'type': {'required': True}
+    }
+    return handlePost(postRules,'declined', authontication(lambda: draw )) 
+def draw(postData, extra):
+    try:
+        game = getGame()
+        activeRound = game.getActiveround()
+        playerId = getLoggedPlayerId()
+        drawType = postData['type']
+        card = activeRound.draw(playerId, drawType)
+        GameModel().draw(card, playerId, drawType, game)
+        return jsonify({'status': 'success', 'data': game.getJson(playerId)})
+    except ValueError as e:
+        return jsonify({'status': 'failed', 'message': str(e)})
+    except:
+        return jsonify({'status': 'failed', 'message': 'Unexpected error'})
+
+@app.route('/new_meld', methods = ['GET', 'POST'])
+@cross_origin(supports_credentials=True)
+def newMeldHandler():
+    postRules = {
+        'meld_action': {'required': True}
+        ,'cards': {'required': True}
+    }
+    return handlePost(postRules, None, authontication(lambda: newMeld )) 
+def newMeld(postData, extra):
+    # try:
+    game = getGame()
+    activeRound = game.getActiveround()
+    playerId = getLoggedPlayerId()
+    meldAction = postData['meld_action']
+    cards = postData['cards']
+    playerHand = activeRound.getPlayerHand(playerId)
+    activeRound.meldValidate(playerHand)
+    playerHand.setRoundId(activeRound.getId())
+    GameModel().meld(playerHand, cards, meldAction)
+    return jsonify({'status': 'success', 'data': game.getJson(playerId)})
+    # except ValueError as e:
+    #     return jsonify({'status': 'failed', 'message': str(e)})
+    # except:
+    #     return jsonify({'status': 'failed', 'message': 'Unexpected error'})
+
+   
+@app.route('/discard', methods = ['GET', 'POST'])
+@cross_origin(supports_credentials=True)
+def discardHandler():
+    postRules = {
+        'card': {'required': True}
+    }
+    return handlePost(postRules, None, authontication(lambda: discard )) 
+
+def discard(postData, extra):
+    card = postData['card']
+    # try:
+    game = getGame()
+    activeRound = game.getActiveround()
+    playerId = getLoggedPlayerId()
+    gameModel = GameModel()
+    activeRound.discard(playerId, card, gameModel)
+    return jsonify({'status': 'success', 'data': game.getJson(playerId)})
+    # except ValueError as e:
+    #     return jsonify({'status': 'failed', 'message': str(e)})
+    # except:
+    #     return jsonify({'status': 'failed', 'message': 'Unexpected error'})
 def startGame():
     gameModel = GameModel()
-    player = getSesAsObj("player")
-    gameModel.startGame(player.getId())
+    playerId = getLoggedPlayerId()
+    start = gameModel.startGame(playerId)
+    ret = {'status': 'failed', 'message': "Unexpected issue, please try again!"}
+    if start:
+        game = gameModel.getGameByPlayer(playerId)
+        ret = {'status': 'success', 'data': game.getJson(playerId)}
+    return ret
 
 def updateHands(postData, status):
     gameModel = GameModel()
@@ -137,7 +212,7 @@ def updateHands(postData, status):
     
 def getLoginUserJson():
     player = getSesAsObj("player")
-    playerId = player.getId()
+    playerId = getLoggedPlayerId()
     pJson = player.getJson(playerId)
     pJson['isLogin'] = 1  
     pJson['hands'] = getHandsJson()
@@ -145,8 +220,7 @@ def getLoginUserJson():
 
 def getHandsJson():
     gameModel = GameModel()
-    player = getSesAsObj("player")
-    playerId = player.getId()
+    playerId = getLoggedPlayerId()
     hands = gameModel.getHandsByPlayer(playerId)
     for i, value in enumerate(hands):
         for key, val in value.items():
@@ -154,12 +228,15 @@ def getHandsJson():
         hands[i] = value
     return hands
 
-def getGameJson():
+def getGame():
     gameModel = GameModel()
+    playerId = getLoggedPlayerId()
+    return gameModel.getGameByPlayer(playerId)
+
+def getLoggedPlayerId():
     player = getSesAsObj("player")
-    playerId = player.getId()
-    game = gameModel.getGameByPlayer(playerId)
-    return game.getJson(playerId) if game else {}
+    return player.getId()
+    
 def getSesAsObj(key):
     if key in session:
         return pickle.loads(session.get(key))

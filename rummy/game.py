@@ -8,6 +8,7 @@ class Game:
     isStarted = 0
     roomId = 0
     hands = []
+    activeRound = None
     def __init__(self, params):
         for key, value in params.items():
             setattr(self, key, value)
@@ -33,6 +34,7 @@ class Game:
             ,'is_started': self.isStarted
             ,'room_id': self.roomId
             ,'hands': list(map(lambda hand: hand.getJson(playerId), self.hands))
+            ,'active_round': self.activeRound.getJson(playerId) if self.activeRound else {}
         }
     
     def getFirstHand(self):
@@ -41,3 +43,6 @@ class Game:
         suffHands = self.hands.copy()
         random.shuffle(suffHands)
         return suffHands[0]
+    
+    def getActiveround(self):
+        return self.activeRound

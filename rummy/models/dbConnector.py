@@ -10,10 +10,13 @@ class DBConnector:
         return d
     @staticmethod
     def get_db():
-        if 'db' not in g:
-            g.db = sqlite3.connect('../data/rummy.db')
-            g.db.row_factory = DBConnector.dict_factory
-        return g.db
+        db = sqlite3.connect('../data/rummy.db')
+        db.row_factory = DBConnector.dict_factory
+        return db
+        # if 'db' not in g:
+        #     g.db = sqlite3.connect('../data/rummy.db')
+        #     g.db.row_factory = DBConnector.dict_factory
+        # return g.db
     @staticmethod    
     def close_db():
         db = g.pop('db', None)

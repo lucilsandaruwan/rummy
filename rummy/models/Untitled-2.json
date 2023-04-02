@@ -1,0 +1,144 @@
+{
+    "finish_mark": "100",
+    "is_completed": 0,
+    "is_started": 1,
+    "room_id": "r1680173626",
+    "hands": [
+        {
+            "email": "alice@rummy.com",
+            "id": 1,
+            "name": "Alice",
+            "roomId": "EdV9DcBVN7",
+            "is_creator": 1,
+            "is_accepted": "accepted",
+            "sets": [],
+            "runs": [],
+            "hand_id": 91,
+            "cards": []
+        },
+        {
+            "name": "Bob",
+            "is_creator": 0,
+            "is_accepted": "accepted",
+            "sets": [],
+            "runs": [],
+            "hand_id": 92,
+            "cards": [],
+            "cardCount": 0
+        }
+    ],
+    "active_round": {
+        "hands": [
+            {
+                "email": "alice@rummy.com",
+                "id": 1,
+                "name": "Alice",
+                "roomId": "EdV9DcBVN7",
+                "is_creator": 0,
+                "is_accepted": -1,
+                "sets": [],
+                "runs": [],
+                "hand_id": 91,
+                "cards": [
+                    {
+                        "suit": "Hearts",
+                        "htmlCod": "&hearts;",
+                        "lable": "Q",
+                        "value": 12,
+                        "id": 12
+                    },
+                    {
+                        "suit": "Spades",
+                        "htmlCod": "&spades;",
+                        "lable": "10",
+                        "value": 10,
+                        "id": 49
+                    },
+                    {
+                        "suit": "Clubs",
+                        "htmlCod": "&clubs;",
+                        "lable": "7",
+                        "value": 7,
+                        "id": 33
+                    },
+                    {
+                        "suit": "Clubs",
+                        "htmlCod": "&clubs;",
+                        "lable": "Q",
+                        "value": 12,
+                        "id": 38
+                    },
+                    {
+                        "suit": "Clubs",
+                        "htmlCod": "&clubs;",
+                        "lable": "J",
+                        "value": 11,
+                        "id": 37
+                    },
+                    {
+                        "suit": "Diamonds",
+                        "htmlCod": "&dimas;",
+                        "lable": "9",
+                        "value": 9,
+                        "id": 22
+                    },
+                    {
+                        "suit": "Diamonds",
+                        "htmlCod": "&dimas;",
+                        "lable": "4",
+                        "value": 4,
+                        "id": 17
+                    },
+                    {
+                        "suit": "Diamonds",
+                        "htmlCod": "&dimas;",
+                        "lable": "3",
+                        "value": 3,
+                        "id": 16
+                    },
+                    {
+                        "suit": "Hearts",
+                        "htmlCod": "&hearts;",
+                        "lable": "J",
+                        "value": 11,
+                        "id": 11
+                    },
+                    {
+                        "suit": "Diamonds",
+                        "htmlCod": "&dimas;",
+                        "lable": "2",
+                        "value": 2,
+                        "id": 15
+                    }
+                ]
+            },
+            {
+                "name": "Bob",
+                "is_creator": 0,
+                "is_accepted": -1,
+                "sets": [],
+                "runs": [],
+                "hand_id": 92,
+                "cards": [],
+                "cardCount": 10
+            }
+        ],
+        "activeHand": 91,
+        "roundNumber": 1,
+        "discardPile": {
+            "count": 0,
+            "lastCard": {
+                "suit": "Hearts",
+                "htmlCod": "&hearts;",
+                "lable": "9",
+                "value": 9,
+                "id": 9
+            }
+        },
+        "stockPile": {
+            "count": 30,
+            "lastCard": {}
+        },
+        "activeHandAction": "draw"
+    }
+}

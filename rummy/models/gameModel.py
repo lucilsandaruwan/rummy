@@ -1,11 +1,12 @@
 from models.model import Model
-from player import Hand
-from player import Player
+from player import Hand, Player
 from game import Game
 import time
-from deck import Deck
+from deck import Deck, StockPile, DiscardPile
 from card import Card
-
+from round import Round
+from meld import MeldRun, MeldSet
+import json
 class GameModel(Model):
     def create(self, data):
         game = None
@@ -48,12 +49,9 @@ class GameModel(Model):
         except Exception as e:
             # Rollback changes if an error occurs
             self.con.rollback()
-            return None
             print(f"Error occurred: {e}")
-
-        # finally:
-        #     # Close cursor and connection
-        #     # self.con.close()
+            return None
+            
     
     def getHands(self, gameId):
         self.cur.execute('''
@@ -76,7 +74,7 @@ class GameModel(Model):
             {
                 'is_creator': row['is_creator']
                 ,'is_accepted': row['is_accepted']
-                ,'hand_id': row['h_id']
+                ,'handId': row['h_id']
                 ,'id': row['player_id']
                 ,'name': row['name']
                 ,'email': row['email']
@@ -141,7 +139,7 @@ class GameModel(Model):
         hand = Hand({
             'is_creator': row['is_creator']
             ,'is_accepted': row['is_accepted']
-            ,'hand_id': row['id']
+            ,'handId': row['id']
             ,'id': row['player_id']
             ,'name': row['name']
             ,'email': row['email']
@@ -187,17 +185,20 @@ class GameModel(Model):
             )
         ''', (playerId,))
         gameRow = self.cur.fetchone()
+        
         if gameRow:
+            gameId = gameRow['id']
             game = Game(
                 {
-                    'id' : gameRow['id']
-                    ,'finishMark' : gameRow['id']
+                    'id' : gameId
+                    ,'finishMark' : gameRow['finish_mark']
                     ,'isCompleted': gameRow['is_completed']
                     ,'isStarted': gameRow['is_started']
                     ,'roomId' : gameRow['room_id']
+                    ,'hands': self.getHandsByGameId(gameId)
+                    ,'activeRound': self.getActiveRound(gameId)
                 }
             )
-            game.setHands(self.getHandsByGameId(game.getId())) 
         return game
 
     def getHandsByGameId(self, gameId):
@@ -227,40 +228,69 @@ class GameModel(Model):
         gameRow = self.cur.fetchone()
         if not gameRow:
             return False
-        game = Game(
-            {
-                'id' : gameRow['id']
-                ,'finishMark' : gameRow['id']
-                ,'isCompleted': gameRow['is_completed']
-                ,'isStarted': gameRow['is_started']
-                ,'roomId' : gameRow['room_id']
-            }
-        )
-        gameId = game.getId()
+        gameId = gameRow['id']
         hands = self.getHandsByGameId(gameId)
-        game.setHands(hands)
+        game = Game({
+            'id': gameRow['id']
+            ,'hands': hands
+        })
+        activeHand = game.getFirstHand()
+        activeHandId = activeHand.getHandId() if activeHand else None
+        self.cur.execute("BEGIN")
         try:
-            roundId = self.newRound(gameId, 1)
+            self.setStartGame(gameId)
+            roundId = self.newRound(gameId, activeHandId, 1)
             deck = self.getCardDeck()
             deck.shuffleCards()
-            hands = deck.deel(hands)
+            hands = deck.deal(hands)
             self.setCardsInHands(hands, roundId)
 
-            # TODO: need top implement stockpile and descardpile
+            disCardPile = deck.getDiscardPile().getCards() 
+            discardCard = disCardPile[0]
+            self.addCardToDiscardPile(roundId, discardCard.getId())
 
+            stockPile = deck.getStockPile().getCards()
+            self.addCardsToStockPile(roundId, stockPile)
+            self.con.commit()
+            return True
         except Exception as e:
             self.con.rollback()
-            return None
             print(f"Error occurred: {e}")
+            return None
+
+    def setStartGame(self, gameId):
+        self.cur.execute('''
+                UPDATE games
+                SET is_started = 1
+                WHERE id = ?
+                ;
+            ''',(gameId,))
+
+    def addCardToDiscardPile(self, roundId, cardId):
+        sql = '''
+            INSERT INTO discardpile 
+            (round_id, card_id) 
+            VALUES (?, ?) '''
+        self.cur.execute(sql, (roundId, cardId))
+
+    def addCardsToStockPile(self, roundId, cards):
+        sql = '''
+            INSERT INTO stockpile 
+            (round_id, card_id) 
+            VALUES (?, ?) '''
+        insData = []
+        for card in cards:
+            insData.append((roundId, card.getId()))
+        self.cur.executemany(sql, insData)
     
     def setCardsInHands(self, hands, roundId):
-        cards = hands.getCards()
         sql = '''
             INSERT INTO cards_in_hand 
             (hand_id, card_id, round_id) 
             VALUES (?, ?, ?) '''
         insData = []
         for hand in hands:
+            cards = hand.getCards()
             if cards:
                 for card in cards:
                     insData.append(
@@ -268,27 +298,12 @@ class GameModel(Model):
                     )
         self.cur.executemany(sql, insData)
     
-    def setHandsInFirstRounds(self, roundId, game):
-        firstHand = game.getFirstHand()
-        hands = game.getHands()
-        gameId = game.getId()
-        if not hands:
-            return None
-        for hand in hands:
-            playing = 0
-            if hand.getHandId() == firstHand.getHandId():
-                playing = 1
-            self.cur.execute('''
-                INSERT INTO hands_in_rounds 
-                (hand_id, round_id, playing) 
-                VALUES (?, ?, ?)''', (gameId,roundId, playing))
-            id = self.cur.lastrowid
             
-    def newRound(self, gameId, num):
+    def newRound(self, gameId, activeHandId, num):
         self.cur.execute('''
             INSERT INTO rounds 
-            (game_id, round_number) 
-            VALUES (?, ?)''', (gameId,num))
+            (game_id, round_number, active_hand) 
+            VALUES (?, ?, ?)''', (gameId,num, activeHandId))
         return self.cur.lastrowid
 
     def getCardDeck(self):
@@ -299,10 +314,294 @@ class GameModel(Model):
     
     def getCardRow(self, row):
         return Card({
-            'suit': row['suit']
+            'suit': row["suit"]
             ,'htmlCod': row['html_code']
             ,'lable': row['lable']
             ,'value': row['value']
             ,'id': row['id']
         }) 
 
+    def getActiveRound(self, gameId):
+        self.cur.execute('''
+            WITH all_group AS (
+                SELECT r.id AS round_id,
+                    r.round_number,
+                    r.active_hand,
+                    r.active_hand_action,
+                    h.id AS hands_id,
+                    h.player_id AS player_id,
+                    p.name AS player_name,
+                    p.email AS player_email,
+                    p.room_id AS player_room_id,
+                    json_group_array(
+                        json_object('cih_id', cih.id, 'id', c.id, 'suit', c.suit, 'lable', c.lable, 'value', c.value, 'html_code', c.html_code) 
+                    ) AS cards
+                FROM rounds AS r
+                    LEFT JOIN
+                    cards_in_hand AS cih ON r.id = cih.round_id
+                    LEFT JOIN
+                    hands AS h ON cih.hand_id = h.id
+                    LEFT JOIN
+                    cards AS c ON cih.card_id = c.id
+                    LEFT JOIN
+                    players AS p ON h.player_id = p.id
+                WHERE r.game_id = ? AND 
+                    r.is_complete != 1
+                GROUP BY r.id, h.id
+            ),
+            g_rounds AS (
+                SELECT round_id,
+                    round_number,
+                    active_hand,
+                    active_hand_action,
+                    json_group_array(
+                        json_object(
+                            'hands_id', hands_id
+                            ,'player_id', player_id
+                            ,'player_name', player_name
+                            ,'player_email', player_email
+                            ,'player_room_id', player_room_id
+                            ,'cards', cards) 
+                    ) AS hands
+                FROM all_group
+            )
+            SELECT *
+            FROM g_rounds
+            GROUP BY round_id;
+        ''', (gameId,))
+
+        roundRow = self.cur.fetchone()
+
+        hands = json.loads(roundRow['hands'])
+        roundId = roundRow['round_id']
+        sets = self.getSetsByRoundId(roundId)
+        runs = self.getRunsByRoundId(roundId)
+        hadsOfRounds = []
+        for hand in hands:
+            c = hand['cards']
+            c = sorted(c, key=lambda card: card['cih_id'])
+            cards = list(map(lambda row: self.getCardRow(row), c))
+            handId = hand['hands_id']
+            hadsOfRounds.append(
+                Hand(
+                    {
+                        'email': hand['player_email']
+                        ,'id': hand['player_id']
+                        ,'name': hand['player_name']
+                        ,'roomId': hand['player_room_id']
+                        ,'handId': hand['hands_id']
+                        ,'cards': cards
+                        ,'sets': sets[handId] if handId in sets else []
+                        ,'runs': runs[handId] if handId in runs else []
+                    }
+                )
+            )
+        
+        round = Round({
+            'hands': hadsOfRounds
+            ,'activeHand': roundRow['active_hand']
+            ,'roundNumber': roundRow['round_number']
+            ,'activeHandAction': roundRow['active_hand_action']
+            ,'id': roundId
+            ,'discardPile': self.getPile(roundId, 'discardpile')
+            ,'stockPile': self.getPile(roundId, 'stockpile')
+        })
+        return round
+    
+    def getSetsByRoundId(self, roundId):
+        self.cur.execute('''
+            WITH setl AS (
+                SELECT s.round_id,
+                    s.hand_id,
+                    s.id AS set_id
+                    ,json_group_array(
+                            json_object('id', c.id, 'suit', c.suit, 'lable', c.lable, 'value', c.value, 'html_code', c.html_code) 
+                        ) AS cards
+                FROM sets AS s
+                    LEFT JOIN
+                    set_cards AS sc ON s.id = sc.set_id
+                    LEFT JOIN
+                    cards AS c ON sc.card_id = c.id
+                WHERE round_id = ?
+                group by hand_id, s.id
+            )
+            select round_id
+            ,hand_id
+            ,json_group_array(
+                json_object(
+                    'id', set_id
+                    ,'cards', cards
+                )
+            ) AS sets
+            from setl;
+        ''', (roundId, ))
+        ret = {}
+        rows = self.cur.fetchall()
+        if rows:
+            for row in rows:
+                ret[row['hand_id']] = [self.getMelds(setElement, 'set') for setElement in json.loads(row['sets'])]
+        return ret
+    
+    def getRunsByRoundId(self, roundId):
+        self.cur.execute('''
+            WITH runl AS (
+                SELECT r.round_id,
+                    r.hand_id,
+                    r.id AS run_id
+                    ,json_group_array(
+                            json_object('id', c.id, 'suit', c.suit, 'lable', c.lable, 'value', c.value, 'html_code', c.html_code) 
+                        ) AS cards
+                FROM runs AS r
+                    LEFT JOIN
+                    run_cards AS rc ON r.id = rc.run_id
+                    LEFT JOIN
+                    cards AS c ON rc.card_id = c.id
+                WHERE round_id = ?
+                group by hand_id, r.id
+            )
+            select round_id
+            ,hand_id
+            ,json_group_array(
+                json_object(
+                    'id', run_id
+                    ,'cards', cards
+                )
+            ) AS runs
+            from runl
+        ''', (roundId, ))
+        ret = {}
+        rows = self.cur.fetchall()
+        if rows:
+            for row in rows:
+                ret[row['hand_id']] = [self.getMelds(run, 'run') for run in json.loads(row['runs'])]
+        return ret
+
+    def getMelds(self, row, meldType):
+        meldClasses = {'run': MeldRun, 'set': MeldSet}
+        if meldType not in meldClasses:
+            return {}
+        meldClass = meldClasses[meldType]
+        cards = sorted(row['cards'], key=lambda card: card['value'])
+        return meldClass(
+            list(map(lambda row: self.getCardRow(row), cards))
+            ,row['id']
+        )
+    def getPile(self, roundId, tble):
+        tbleObjMapping = {'discardpile': DiscardPile , 'stockpile': StockPile}
+        if tble not in tbleObjMapping:
+            return None
+
+        self.cur.execute(
+            ''' SELECT d.id
+                ,round_id
+                ,json_group_array(
+                    json_object(
+                        'pid', d.id, 'id', c.id, 'suit', c.suit, 'lable', c.lable, 'value', c.value, 'html_code', c.html_code
+                    )
+                ) AS cards
+                FROM {} AS d
+                left join cards as c
+                on d.card_id = c.id
+                WHERE d.round_id = ? '''.format(tble), (roundId,)
+        )
+        row = self.cur.fetchone()
+        if row:
+            cardRows = json.loads(row['cards'])
+            cardRows = sorted(cardRows, key=lambda card: card['pid'])
+            cards = list(map(lambda row: self.getCardRow(row), cardRows))
+            pileObj = {
+                'id': row['id']
+                ,'roundId': row['round_id']
+                ,'cards': cards
+            }
+            return tbleObjMapping[tble](pileObj)
+
+    def draw(self, card, playerId, drawType, game):
+        self.cur.execute("BEGIN")
+        try:
+            activeRound = game.getActiveround()
+            playerHand = activeRound.getPlayerHand(playerId)
+            roundId = activeRound.getId()
+            handId = playerHand.getHandId()
+            cardId = card.getId()
+
+            drawTbl = 'discardpile' if drawType == 'discard' else 'stockpile'
+            self.cur.execute('''
+                DELETE FROM {}
+                WHERE round_id = ? and card_id = ? 
+            '''.format(drawTbl), (roundId, cardId))
+
+            self.cur.execute('''
+                INSERT INTO cards_in_hand 
+                (hand_id, card_id, round_id) 
+                VALUES (?, ?, ?)''', (handId, cardId, roundId))
+            
+            self.cur.execute('''
+                UPDATE rounds
+                SET active_hand_action = ?
+                WHERE id = ?;
+            ''', ("discard", roundId))
+            self.con.commit()
+        except Exception as e:
+            self.con.rollback()
+            print(f"Error occurred: {e}")
+    
+    def meld(self, playerHand, cards, meldAction):
+        roundId = playerHand.getRoundId()
+        handId = playerHand.getHandId()
+        self.cur.execute("BEGIN")
+        meld = playerHand.validateNewMeldCards(cards, meldAction)
+        # try:
+        tble = 'runs' if meldAction == 'run' else 'sets'
+        tble1 = 'run_cards' if meldAction == 'run' else 'set_cards'
+        idCol = 'run_id' if meldAction == 'run' else 'set_id'
+        self.cur.execute('''
+            INSERT INTO {} 
+            (round_id, hand_id) 
+            VALUES (?, ?)'''.format(tble), (roundId, handId))
+        meldId = self.cur.lastrowid
+        sql = '''
+            INSERT INTO {} 
+            ({}, card_id) 
+            VALUES (?, ?)'''.format(tble1, idCol)
+        insData = []
+        for card in cards:
+            cardId = card['id']
+            self.cur.execute('''
+                DELETE FROM cards_in_hand
+                WHERE round_id = ? and hand_id = ? and  card_id = ?
+            ''', (roundId, handId, cardId))
+            insData.append((meldId, cardId))
+        self.cur.executemany(sql, insData)
+        playerHand.addMeld(meld)
+        self.con.commit()
+        # except Exception as e:
+        #     self.con.rollback()
+        #     print(f"Error occurred: {e}")  
+    
+    def discard(self, card, hand, round):
+        self.cur.execute("BEGIN")
+        roundId = round.getId()
+        handId = hand.getHandId()
+        cardId = card.getId()
+        activeHand = round.getActiveHand()
+        # try:
+        self.cur.execute('''
+            DELETE FROM cards_in_hand
+            WHERE round_id = ? and hand_id = ? and  card_id = ?
+        ''', (roundId, handId, cardId))
+
+        self.cur.execute('''
+            INSERT INTO discardpile
+            (round_id, card_id) 
+            VALUES (?, ?)''', (roundId, cardId))
+
+        self.cur.execute('''
+            UPDATE rounds
+            SET active_hand = ?, active_hand_action = ?
+            WHERE id = ?;
+        ''',(activeHand, 'draw', roundId))
+        self.con.commit()
+        # except Exception as e:
+        #     self.con.rollback()
+        #     print(f"Error occurred: {e}")  
